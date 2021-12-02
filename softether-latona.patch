@@ -1,0 +1,124 @@
+diff --git a/src/Cedar/DDNS.c b/src/Cedar/DDNS.c
+index 87cd49f1..5f214e81 100644
+--- a/src/Cedar/DDNS.c
++++ b/src/Cedar/DDNS.c
+@@ -814,6 +814,8 @@ UINT DCGetMyIpMain(DDNS_CLIENT *c, bool ipv6, char *dst, UINT dst_size, bool use
+ // Creating a DDNS client
+ DDNS_CLIENT *NewDDNSClient(CEDAR *cedar, UCHAR *key, INTERNET_SETTING *t)
+ {
++	return NULL;
++#if 0
+ 	DDNS_CLIENT *c;
+ 	UCHAR key_hash[SHA1_SIZE];
+ 	// Validate arguments
+@@ -854,6 +856,7 @@ DDNS_CLIENT *NewDDNSClient(CEDAR *cedar, UCHAR *key, INTERNET_SETTING *t)
+ 	c->Thread = NewThread(DCThread, c);
+ 
+ 	return c;
++#endif
+ }
+ 
+ // Release of DDNS client
+diff --git a/src/Cedar/Hub.c b/src/Cedar/Hub.c
+index 38c6350f..768488b5 100644
+--- a/src/Cedar/Hub.c
++++ b/src/Cedar/Hub.c
+@@ -589,6 +589,7 @@ void DataToHubOptionStruct(HUB_OPTION *o, RPC_ADMIN_OPTION *ao)
+ 	GetHubAdminOptionDataAndSet(ao, "DisableUdpAcceleration", o->DisableUdpAcceleration);
+ 	GetHubAdminOptionDataAndSet(ao, "DisableUdpFilterForLocalBridgeNic", o->DisableUdpFilterForLocalBridgeNic);
+ 	GetHubAdminOptionDataAndSet(ao, "ApplyIPv4AccessListOnArpPacket", o->ApplyIPv4AccessListOnArpPacket);
++	GetHubAdminOptionDataAndSet(ao, "RemoveDefGwOnDhcp", o->RemoveDefGwOnDhcp);
+ 	GetHubAdminOptionDataAndSet(ao, "RemoveDefGwOnDhcpForLocalhost", o->RemoveDefGwOnDhcpForLocalhost);
+ 	GetHubAdminOptionDataAndSet(ao, "SecureNAT_MaxTcpSessionsPerIp", o->SecureNAT_MaxTcpSessionsPerIp);
+ 	GetHubAdminOptionDataAndSet(ao, "SecureNAT_MaxTcpSynSentPerIp", o->SecureNAT_MaxTcpSynSentPerIp);
+@@ -662,6 +663,7 @@ void HubOptionStructToData(RPC_ADMIN_OPTION *ao, HUB_OPTION *o, char *hub_name)
+ 	Add(aol, NewAdminOption("DisableUdpAcceleration", o->DisableUdpAcceleration));
+ 	Add(aol, NewAdminOption("DisableUdpFilterForLocalBridgeNic", o->DisableUdpFilterForLocalBridgeNic));
+ 	Add(aol, NewAdminOption("ApplyIPv4AccessListOnArpPacket", o->ApplyIPv4AccessListOnArpPacket));
++	Add(aol, NewAdminOption("RemoveDefGwOnDhcp", o->RemoveDefGwOnDhcp));
+ 	Add(aol, NewAdminOption("RemoveDefGwOnDhcpForLocalhost", o->RemoveDefGwOnDhcpForLocalhost));
+ 	Add(aol, NewAdminOption("SecureNAT_MaxTcpSessionsPerIp", o->SecureNAT_MaxTcpSessionsPerIp));
+ 	Add(aol, NewAdminOption("SecureNAT_MaxTcpSynSentPerIp", o->SecureNAT_MaxTcpSynSentPerIp));
+@@ -3702,7 +3704,7 @@ LABEL_TRY_AGAIN:
+ 
+ 	if (no_parse_dhcp == false && packet != NULL)
+ 	{
+-		if (hub != NULL && hub->Option != NULL && hub->Option->RemoveDefGwOnDhcpForLocalhost)
++		if (hub != NULL && hub->Option != NULL && (hub->Option->RemoveDefGwOnDhcp || hub->Option->RemoveDefGwOnDhcpForLocalhost))
+ 		{
+ 			// Remove the designation of the DHCP server from the DHCP response packet addressed to localhost
+ 			if (packet->TypeL7 == L7_DHCPV4)
+@@ -3717,7 +3719,7 @@ LABEL_TRY_AGAIN:
+ 
+ 							if (dhcp->OpCode == 2)
+ 							{
+-								if (IsMacAddressLocalFast(dhcp->ClientMacAddress))
++								if (hub->Option->RemoveDefGwOnDhcp || IsMacAddressLocalFast(dhcp->ClientMacAddress))
+ 								{
+ 									BUF *new_buf;
+ 									DHCP_MODIFY_OPTION m;
+diff --git a/src/Cedar/Hub.h b/src/Cedar/Hub.h
+index 3942c69a..26c385a0 100644
+--- a/src/Cedar/Hub.h
++++ b/src/Cedar/Hub.h
+@@ -155,6 +155,7 @@ struct HUB_OPTION
+ 	bool DisableUdpAcceleration;		// Prohibit the UDP acceleration function
+ 	bool DisableUdpFilterForLocalBridgeNic;	// Not to perform filtering DHCP packets associated with local bridge NIC
+ 	bool ApplyIPv4AccessListOnArpPacket;	// Apply an IPv4 access list to the ARP packet
++	bool RemoveDefGwOnDhcp;				// Remove the designation of the DHCP server from the DHCP response packet
+ 	bool RemoveDefGwOnDhcpForLocalhost;	// Remove the designation of the DHCP server from the DHCP response packet addressed to localhost
+ 	UINT SecureNAT_MaxTcpSessionsPerIp;		// Maximum number of TCP sessions per IP address
+ 	UINT SecureNAT_MaxTcpSynSentPerIp;		// Maximum number of TCP sessions of SYN_SENT state per IP address
+diff --git a/src/Cedar/Server.c b/src/Cedar/Server.c
+index 38f900e3..5f6c7725 100644
+--- a/src/Cedar/Server.c
++++ b/src/Cedar/Server.c
+@@ -3895,6 +3895,7 @@ void SiLoadHubOptionCfg(FOLDER *f, HUB_OPTION *o)
+ 	o->DisableUdpAcceleration = CfgGetBool(f, "DisableUdpAcceleration");
+ 	o->DisableUdpFilterForLocalBridgeNic = CfgGetBool(f, "DisableUdpFilterForLocalBridgeNic");
+ 	o->ApplyIPv4AccessListOnArpPacket = CfgGetBool(f, "ApplyIPv4AccessListOnArpPacket");
++	o->RemoveDefGwOnDhcp = CfgGetBool(f, "RemoveDefGwOnDhcp");
+ 	if (CfgIsItem(f, "RemoveDefGwOnDhcpForLocalhost"))
+ 	{
+ 		o->RemoveDefGwOnDhcpForLocalhost = CfgGetBool(f, "RemoveDefGwOnDhcpForLocalhost");
+@@ -4018,6 +4019,7 @@ void SiWriteHubOptionCfg(FOLDER *f, HUB_OPTION *o)
+ 	CfgAddBool(f, "DisableUdpAcceleration", o->DisableUdpAcceleration);
+ 	CfgAddBool(f, "DisableUdpFilterForLocalBridgeNic", o->DisableUdpFilterForLocalBridgeNic);
+ 	CfgAddBool(f, "ApplyIPv4AccessListOnArpPacket", o->ApplyIPv4AccessListOnArpPacket);
++	CfgAddBool(f, "RemoveDefGwOnDhcp", o->RemoveDefGwOnDhcp);
+ 	CfgAddBool(f, "RemoveDefGwOnDhcpForLocalhost", o->RemoveDefGwOnDhcpForLocalhost);
+ 	CfgAddInt(f, "SecureNAT_MaxTcpSessionsPerIp", o->SecureNAT_MaxTcpSessionsPerIp);
+ 	CfgAddInt(f, "SecureNAT_MaxTcpSynSentPerIp", o->SecureNAT_MaxTcpSynSentPerIp);
+@@ -7481,6 +7483,7 @@ void SiCalledUpdateHub(SERVER *s, PACK *p)
+ 	o.DisableUdpAcceleration = PackGetBool(p, "DisableUdpAcceleration");
+ 	o.DisableUdpFilterForLocalBridgeNic = PackGetBool(p, "DisableUdpFilterForLocalBridgeNic");
+ 	o.ApplyIPv4AccessListOnArpPacket = PackGetBool(p, "ApplyIPv4AccessListOnArpPacket");
++	o.RemoveDefGwOnDhcp = PackGetBool(p, "RemoveDefGwOnDhcp");
+ 	o.RemoveDefGwOnDhcpForLocalhost = PackGetBool(p, "RemoveDefGwOnDhcpForLocalhost");
+ 	o.SecureNAT_MaxTcpSessionsPerIp = PackGetInt(p, "SecureNAT_MaxTcpSessionsPerIp");
+ 	o.SecureNAT_MaxTcpSynSentPerIp = PackGetInt(p, "SecureNAT_MaxTcpSynSentPerIp");
+@@ -9306,6 +9309,7 @@ void SiPackAddCreateHub(PACK *p, HUB *h)
+ 	PackAddBool(p, "DisableUdpAcceleration", h->Option->DisableUdpAcceleration);
+ 	PackAddBool(p, "DisableUdpFilterForLocalBridgeNic", h->Option->DisableUdpFilterForLocalBridgeNic);
+ 	PackAddBool(p, "ApplyIPv4AccessListOnArpPacket", h->Option->ApplyIPv4AccessListOnArpPacket);
++	PackAddBool(p, "RemoveDefGwOnDhcp", h->Option->RemoveDefGwOnDhcp);
+ 	PackAddBool(p, "RemoveDefGwOnDhcpForLocalhost", h->Option->RemoveDefGwOnDhcpForLocalhost);
+ 
+ 	PackAddInt(p, "SecureNAT_MaxTcpSessionsPerIp", h->Option->SecureNAT_MaxTcpSessionsPerIp);
+@@ -10713,6 +10717,8 @@ void SiGetCurrentRegion(CEDAR *c, char *region, UINT region_size)
+ // 
+ bool SiIsEnterpriseFunctionsRestrictedOnOpenSource(CEDAR *c)
+ {
++	return false;
++#if 0
+ 	char region[128];
+ 	bool ret = false;
+ 	// Validate arguments
+@@ -10730,6 +10736,7 @@ bool SiIsEnterpriseFunctionsRestrictedOnOpenSource(CEDAR *c)
+ 	}
+ 
+ 	return ret;
++#endif
+ }
+ 
+ // Update the current region

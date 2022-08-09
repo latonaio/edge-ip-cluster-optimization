@@ -31,7 +31,7 @@ VERBOSE=1 make -C build -j$(nproc)
 - インストールを行います。
 
 ```bash
-sudo make install
+sudo make -C build install
 ```
 
 - Jetson 端末起動時に自動で起動するよう設定し、SoftEther VPN Server を起動します。
